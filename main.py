@@ -5,128 +5,107 @@ from datetime import datetime, timedelta
 
 load_dotenv()
 
-def check_issues():
-    #check only, returns number of bugs created and updated since last fetch
+def request_jira(jql, offset):
+
     url = os.getenv('search_url')
+
     user = os.getenv('jiraUser')
     pw = os.getenv('jiraToken')
+    auth = HTTPBasicAuth(user, pw)
+
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+    payload = json.dumps( {
+        "expand": [
+        "names",
+        "issutypes"
+        ],
+        "fields": [
+            "key",
+            "summary",
+            "status",
+            "assignee",
+            "reporter",
+            "created",
+            "labels",
+            "description"
+            ],
+            "fieldsByKeys": False,
+            "jql": jql,
+            "maxResults": 100,
+            "startAt": offset
+            } )
+
+    response = requests.request(
+        "POST",
+        url,
+        data=payload,
+        headers=headers,
+        auth=auth
+        )
+
+    return response
+
+def check_issues():
+    #check only, returns number of bugs created and updated since last fetch
     
     last_fetch_str = read_last_fetch()
     last_fetch_dt = datetime.fromisoformat(last_fetch_str)
     last_fetch = last_fetch_dt.strftime("%Y-%m-%d %H:%M")
+    jql_created = "project in (KNT, KM) and type = Bug and created > \"" + last_fetch + "\""
+    jql_status = "project in (KNT, KM) and type = Bug and status changed after \"" + last_fetch + "\""
     
     offset = 0
-    
-    auth = HTTPBasicAuth(user, pw)
-    
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-    }
-    
-    extracted_data = []
-    
+
+    #get bugs created since last fetch
+    response = request_jira(jql_created, 0)
+    response_data = json.loads(response.text)
+    created_count = response_data['total']
+    print(f"Since {last_fetch}")
+    print(f"Bugs Created: {created_count}")
+
+    #get bugs updated(status) since last fetch
+    response = request_jira(jql_status, 0)
+    response_data = json.loads(response.text)
+    print(f"Status Updated: {response_data['total']}")
+
+    print("Would you like to update the datafile?")
     while(True):
-        payload = json.dumps( {
-            "expand": [
-            "names",
-            "issutypes"
-            ],
-            "fields": [
-                "key",
-                "summary",
-                "status",
-                "assignee",
-                "reporter",
-                "created",
-                "labels",
-                "description"
-            ],
-            "fieldsByKeys": False,
-            "jql": "project in (KNT, KM) and type = Bug and created > -30m",
-            "maxResults": 100,
-            "startAt": offset
-            } )
-        
-        response = requests.request(
-            "POST",
-            url,
-            data=payload,
-            headers=headers,
-            auth=auth
-            )
-        #print(json.dumps(json.loads(response.text), sort_keys=True, indent=4, separators=(",", ": ")))
-        response_data = json.loads(response.text)
-        
-        offset += 100
-        if(len(response_data['issues']) == 0):
-            break
-        
-        extract_fields(response_data, extracted_data)
-    if(extracted_data == []):
-        return False
-    else:
-        jsonWriter(extracted_data)
-        return True
+        ans = input("(y/n) ")
+        match ans.lower():
+            case "y":
+                update_datafile()
+                break
+            case "n":
+                break
+            case _:
+                continue
     
 def update_datafile():
-    url = os.getenv('search_url')
-    user = os.getenv('jiraUser')
-    pw = os.getenv('jiraToken')
-    
     offset = 0
-    
-    auth = HTTPBasicAuth(user, pw)
-    
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-    }
+    jql = "project in (KNT, KM) and type = Bug"
     
     extracted_data = []
     
+    print("Getting Issues...", end="", flush=True)
     while(True):
-        payload = json.dumps( {
-            "expand": [
-            "names",
-            "issutypes"
-            ],
-            "fields": [
-                "key",
-                "summary",
-                "status",
-                "assignee",
-                "reporter",
-                "created",
-                "labels",
-                "description"
-            ],
-            "fieldsByKeys": False,
-            "jql": "project in (KNT, KM) and type = Bug and created > -30m",
-            "maxResults": 100,
-            "startAt": offset
-            } )
-        
-        response = requests.request(
-            "POST",
-            url,
-            data=payload,
-            headers=headers,
-            auth=auth
-            )
-        #print(json.dumps(json.loads(response.text), sort_keys=True, indent=4, separators=(",", ": ")))
+        response = request_jira(jql, offset)
         response_data = json.loads(response.text)
         
         offset += 100
+        #print(len(response_data['issues']))
+        print("||", end="", flush=True)
         if(len(response_data['issues']) == 0):
             break
         
         extract_fields(response_data, extracted_data)
-    if(extracted_data == []):
-        return False
-    else:
-        jsonWriter(extracted_data)
-        return True
+    print("done.")
+
+    #upload to openAI
+
+    jsonWriter(extracted_data)
     
 def last_fetch_format():
     last_fetch_str = read_last_fetch()
@@ -218,9 +197,9 @@ def main():
             case "bye":
                 sys.exit()
             case "update":
-                print()
+                update_datafile()
             case "check":
-                print()
+                check_issues()
             case _:
                 ask_assistant(prompt)
 
