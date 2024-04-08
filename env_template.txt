@@ -1,0 +1,6 @@
+search_url=https://sourcefitdev.atlassian.net/rest/api/2/search
+browse_url=https://sourcefitdev.atlassian.net/browse/
+jiraUser=sean.garibay@sourcefit.net
+jiraToken=
+api_key=
+assistant_id=

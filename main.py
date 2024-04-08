@@ -5,7 +5,71 @@ from datetime import datetime, timedelta
 
 load_dotenv()
 
-def get_latest_bugs():
+def check_issues():
+    #check only, returns number of bugs created and updated since last fetch
+    url = os.getenv('search_url')
+    user = os.getenv('jiraUser')
+    pw = os.getenv('jiraToken')
+    
+    last_fetch_str = read_last_fetch()
+    last_fetch_dt = datetime.fromisoformat(last_fetch_str)
+    last_fetch = last_fetch_dt.strftime("%Y-%m-%d %H:%M")
+    
+    offset = 0
+    
+    auth = HTTPBasicAuth(user, pw)
+    
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+    
+    extracted_data = []
+    
+    while(True):
+        payload = json.dumps( {
+            "expand": [
+            "names",
+            "issutypes"
+            ],
+            "fields": [
+                "key",
+                "summary",
+                "status",
+                "assignee",
+                "reporter",
+                "created",
+                "labels",
+                "description"
+            ],
+            "fieldsByKeys": False,
+            "jql": "project in (KNT, KM) and type = Bug and created > -30m",
+            "maxResults": 100,
+            "startAt": offset
+            } )
+        
+        response = requests.request(
+            "POST",
+            url,
+            data=payload,
+            headers=headers,
+            auth=auth
+            )
+        #print(json.dumps(json.loads(response.text), sort_keys=True, indent=4, separators=(",", ": ")))
+        response_data = json.loads(response.text)
+        
+        offset += 100
+        if(len(response_data['issues']) == 0):
+            break
+        
+        extract_fields(response_data, extracted_data)
+    if(extracted_data == []):
+        return False
+    else:
+        jsonWriter(extracted_data)
+        return True
+    
+def update_datafile():
     url = os.getenv('search_url')
     user = os.getenv('jiraUser')
     pw = os.getenv('jiraToken')
@@ -64,6 +128,13 @@ def get_latest_bugs():
         jsonWriter(extracted_data)
         return True
     
+def last_fetch_format():
+    last_fetch_str = read_last_fetch()
+    last_fetch_dt = datetime.fromisoformat(last_fetch_str)
+    last_fetch = last_fetch_dt.strftime("%Y-%m-%d %H:%M")
+    
+    return last_fetch
+    
 def extract_fields(response, extracted_data):
     """Extract desired fields from each item in the response."""
     for item in response['issues']: 
@@ -120,6 +191,7 @@ def read_last_fetch():
         return None
     
 def should_update():
+    #for time based auto updates. Not used for now
     last_fetch = read_last_fetch()
     last_fetch_dt = datetime.fromisoformat(last_fetch)
     cur_time = datetime.now()
@@ -132,22 +204,25 @@ def should_update():
     else:
         return False
     
-def file_update():
-    get_latest_bugs()
-    write_last_fetch()
-    
+def ask_assistant(query):
+    print("[Assistant] ", query)
     
 def main():
     print("What bugs are you looking for?      (type: 'bye' to exit)\n")
     while(True):
-        prompt = input("[QUERY] ")
-        if(prompt.lower() == "bye"):
-            sys.exit()
-        if(should_update()):
-            print("Updating datafile...")
-            file_update()
         
-        print("[Assistant] ", prompt)
+        prompt = input("[QUERY] ")
+        match prompt.lower():
+            case "help":
+                print("'help'\t\t- show menu\n'bye'\t\t- exit\n'update'\t-update the jira isues datafile without checking for changes\n'check'\t\t- check for changes to the jira issues")
+            case "bye":
+                sys.exit()
+            case "update":
+                print()
+            case "check":
+                print()
+            case _:
+                ask_assistant(prompt)
 
 if __name__ == "__main__":
     main()
