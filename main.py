@@ -1,9 +1,28 @@
-import sys, os, requests, json
+import sys, os, requests, json, re
+from openai import OpenAI
 from requests.auth import HTTPBasicAuth
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 
 load_dotenv()
+
+api_key = os.getenv('api_key')
+asst_id = os.getenv('assistant_id')
+client = OpenAI(api_key=api_key)
+
+thread = client.beta.threads.create()
+
+def get_keys(input):
+    # Define the regex pattern to match "KNT-xxxx" and "KM-xxxx"
+    pattern = r'\b(KNT|KM)-(\d+)\b'
+
+    # Use findall() to extract all matches
+    keys = re.findall(pattern, input)
+    keylist = []
+    for obj in keys:
+        keylist.append(obj[0] + "-" + obj[1])
+    
+    return keylist
 
 def request_jira(jql, offset):
 
@@ -150,8 +169,18 @@ def jsonWriter(data):
         with open('bugdata.json', 'w') as file:
             json.dump(data, file, indent=4)
     
-def get_issue():
-    print("get_issue")
+def get_links(keys):
+    browse = os.getenv('browse_url')
+    linklist = []
+    for item in keys:
+        linklist.append(browse + item)
+    
+    inline_links = []
+    for item1, item2 in zip(linklist, keys):
+        inline_links.append("\033]8;;{}\033\\{}\033]8;;\033\\".format(item1, item2))
+
+    for item in inline_links:
+        print(item)
     
 def write_last_fetch():
     """Write the current timestamp to the JSON file."""
@@ -184,7 +213,30 @@ def should_update():
         return False
     
 def ask_assistant(query):
-    print("[Assistant] ", query)
+    message = client.beta.threads.messages.create(
+        thread_id=thread.id,
+        role="user",
+        content=query
+    )
+    
+    run = client.beta.threads.runs.create_and_poll(
+        thread_id=thread.id,
+        assistant_id=asst_id,
+        instructions="You are to return all the relevant issues up to a maximum of 5. Returned issues must be in the following format only: <key> | <summary>"
+    )
+    
+    if run.status == 'completed': 
+        msg_response = client.beta.threads.messages.list(
+            thread_id=thread.id
+        )
+        msg_data = msg_response.data
+        latest = msg_data[0].content[0].text.value
+        print("[ASSISTANT] ", latest)
+        keys = get_keys(latest)
+        if keys:
+            get_links(keys)
+    else:
+        print(run.status)
     
 def main():
     print("What bugs are you looking for?      (type: 'bye' to exit)\n")
