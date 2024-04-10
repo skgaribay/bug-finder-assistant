@@ -68,31 +68,31 @@ def request_jira(jql, offset):
     return response
 
 def check_issues():
-    #check only, returns number of bugs created and updated since last fetch
+    #check only, returns number of bugs created and updated since last update
     
-    last_fetch_str = read_last_fetch()
-    last_fetch_dt = datetime.fromisoformat(last_fetch_str)
-    last_fetch = last_fetch_dt.strftime("%Y-%m-%d %H:%M")
-    jql_created = "project in (KNT, KM) and type = Bug and created > \"" + last_fetch + "\" ORDER BY created DESC"
-    jql_status = "project in (KNT, KM) and type = Bug and status changed after \"" + last_fetch + "\" ORDER BY created DESC"
+    last_update_str = read_last_update()
+    last_update_dt = datetime.fromisoformat(last_update_str)
+    last_update = last_update_dt.strftime("%Y-%m-%d %H:%M")
+    jql_created = "project in (KNT, KM) and type = Bug and created > \"" + last_update + "\" ORDER BY created DESC"
+    jql_status = "project in (KNT, KM) and type = Bug and status changed after \"" + last_update + "\" ORDER BY created DESC"
     
     offset = 0
 
-    #get bugs created since last fetch
+    #get bugs created since last update
     response = request_jira(jql_created, 0)
     response_data = json.loads(response.text)
     created_count = response_data['total']
-    print(f"Since {last_fetch}")
-    print(f"Bugs Created: {created_count}")
+    print(f"[SYS] Since {last_update}")
+    print(f"\tBugs Created: {created_count}")
 
-    #get bugs updated(status) since last fetch
+    #get bugs updated(status) since last update
     response = request_jira(jql_status, 0)
     response_data = json.loads(response.text)
-    print(f"Status Updated: {response_data['total']}")
+    print(f"\tStatus Updated: {response_data['total']}")
 
-    print("Would you like to update the datafile?")
+    print("[SYS] Would you like to update the datafile?")
     while(True):
-        ans = input("(y/n) ")
+        ans = input("\t(y/n) ")
         match ans.lower():
             case "y":
                 update_datafile()
@@ -108,30 +108,50 @@ def update_datafile():
     
     extracted_data = []
     
-    print("Getting Issues...", end="", flush=True)
+    print("[SYS] Getting Issues...[", end="", flush=True)
     while(True):
         response = request_jira(jql, offset)
         response_data = json.loads(response.text)
         
         offset += 100
         #print(len(response_data['issues']))
-        print("||", end="", flush=True)
+        print("-", end="", flush=True)
         if(len(response_data['issues']) == 0):
             break
         
         extract_fields(response_data, extracted_data)
-    print("done.")
+    print("]done.")
 
     #upload to openAI
 
-    jsonWriter(extracted_data)
+    fpath = jsonWriter(extracted_data)
     
-def last_fetch_format():
-    last_fetch_str = read_last_fetch()
-    last_fetch_dt = datetime.fromisoformat(last_fetch_str)
-    last_fetch = last_fetch_dt.strftime("%Y-%m-%d %H:%M")
+    update_asst_file(fpath)
     
-    return last_fetch
+def update_asst_file(fpath):
+    print("[SYS] Uploading datafile to assistant...", end="", flush=True)
+    file = client.files.create(
+        file=open(fpath, "rb"),
+        purpose="assistants"
+    )
+    
+    fid = file.id
+    
+    client.beta.assistants.update(
+        asst_id,
+        file_ids=[fid],
+    )
+    
+    print("done")
+    
+    write_last_update()
+        
+def last_update_format():
+    last_update_str = read_last_update()
+    last_update_dt = datetime.fromisoformat(last_update_str)
+    last_update = last_update_dt.strftime("%Y-%m-%d %H:%M")
+    
+    return last_update
     
 def extract_fields(response, extracted_data):
     """Extract desired fields from each item in the response."""
@@ -154,8 +174,17 @@ def extract_fields(response, extracted_data):
     #return extracted_data
 
 def jsonWriter(data):
+    now_st = str(datetime.now().strftime('%Y-%m-%dT%H-%M-%S'))
+    
+    datafiles_path = os.path.join(os.getcwd(), "datafiles")
+    if not os.path.exists(datafiles_path):
+        os.makedirs(datafiles_path)
+        
+    fname = "bugdata_" + now_st + ".json"
+    fpath = os.path.join(datafiles_path, fname)
+    
     try:
-        with open('bugdata.json', 'r+') as file:
+        with open(fpath, 'r+') as file:
             # Load existing data
             existing_data = json.load(file)
             # Append new data
@@ -166,8 +195,10 @@ def jsonWriter(data):
             json.dump(existing_data, file, indent=4)
     except FileNotFoundError:
         # If the file doesn't exist, create it and write the data
-        with open('bugdata.json', 'w') as file:
+        with open(fpath, 'w') as file:
             json.dump(data, file, indent=4)
+            
+    return fpath
     
 def get_links(keys):
     browse = os.getenv('browse_url')
@@ -179,38 +210,47 @@ def get_links(keys):
     for item1, item2 in zip(linklist, keys):
         inline_links.append("\033]8;;{}\033\\{}\033]8;;\033\\".format(item1, item2))
 
-    for item in inline_links:
-        print(item)
+    keys_and_links = []
+    for item1, item2 in zip(keys, inline_links):
+        keys_and_links.append((item1, item2))
     
-def write_last_fetch():
+    return keys_and_links
+
+def write_last_update():
     """Write the current timestamp to the JSON file."""
-    data = {"lastFetch": datetime.now().isoformat()}
-    with open('last_fetch.json', 'w') as f:
+    data = {"lastUpdate": datetime.now().isoformat()}
+    with open('last_update.json', 'w') as f:
         json.dump(data, f)
 
-def read_last_fetch():
-    """Read the lastFetched timestamp from the JSON file."""
+def read_last_update():
+    """Read the lastUpdateed timestamp from the JSON file."""
     try:
-        with open('last_fetch.json', 'r') as f:
+        with open('last_update.json', 'r') as f:
             data = json.load(f)
-        return data.get('lastFetch')
+        return data.get('lastUpdate')
     except FileNotFoundError:
         # Return None if the file doesn't exist
         return None
     
 def should_update():
     #for time based auto updates. Not used for now
-    last_fetch = read_last_fetch()
-    last_fetch_dt = datetime.fromisoformat(last_fetch)
+    last_update = read_last_update()
+    last_update_dt = datetime.fromisoformat(last_update)
     cur_time = datetime.now()
     
-    time_diff = cur_time - last_fetch_dt
+    time_diff = cur_time - last_update_dt
     thresh = timedelta(minutes=30)
     
     if time_diff > thresh:
         return True
     else:
         return False
+    
+def clickable(str, pairs):
+    for item in pairs:
+        str = str.replace(item[0], item[1])
+    
+    return str
     
 def ask_assistant(query):
     message = client.beta.threads.messages.create(
@@ -231,21 +271,26 @@ def ask_assistant(query):
         )
         msg_data = msg_response.data
         latest = msg_data[0].content[0].text.value
-        print("[ASSISTANT] ", latest)
         keys = get_keys(latest)
         if keys:
-            get_links(keys)
+            keypairs = get_links(keys)
+            wlinks = clickable(latest, keypairs)
+            print("[ASSISTANT] ", wlinks)
+        else:
+            print("[ASSISTANT] ", latest)
+            
     else:
         print(run.status)
     
 def main():
-    print("What bugs are you looking for?      (type: 'bye' to exit)\n")
+    os.system('cls')
+    print("What bugs are you looking for?      (type: 'help' for commands)\n")
     while(True):
         
         prompt = input("[QUERY] ")
         match prompt.lower():
             case "help":
-                print("'help'\t\t- show menu\n'bye'\t\t- exit\n'update'\t-update the jira isues datafile without checking for changes\n'check'\t\t- check for changes to the jira issues")
+                print("\t'help'\t\t- show menu\n\t'bye'\t\t- exit\n\t'update'\t-update the jira isues datafile without checking for changes\n\t'check'\t\t- check for changes to the jira issues")
             case "bye":
                 sys.exit()
             case "update":
