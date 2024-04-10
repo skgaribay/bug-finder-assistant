@@ -73,8 +73,8 @@ def check_issues():
     last_fetch_str = read_last_fetch()
     last_fetch_dt = datetime.fromisoformat(last_fetch_str)
     last_fetch = last_fetch_dt.strftime("%Y-%m-%d %H:%M")
-    jql_created = "project in (KNT, KM) and type = Bug and created > \"" + last_fetch + "\""
-    jql_status = "project in (KNT, KM) and type = Bug and status changed after \"" + last_fetch + "\""
+    jql_created = "project in (KNT, KM) and type = Bug and created > \"" + last_fetch + "\" ORDER BY created DESC"
+    jql_status = "project in (KNT, KM) and type = Bug and status changed after \"" + last_fetch + "\" ORDER BY created DESC"
     
     offset = 0
 
@@ -104,7 +104,7 @@ def check_issues():
     
 def update_datafile():
     offset = 0
-    jql = "project in (KNT, KM) and type = Bug"
+    jql = "project in (KNT, KM) and type = Bug ORDER BY created DESC"
     
     extracted_data = []
     

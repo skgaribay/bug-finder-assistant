@@ -1,6 +1,6 @@
-search_url=https://sourcefitdev.atlassian.net/rest/api/2/search
-browse_url=https://sourcefitdev.atlassian.net/browse/
-jiraUser=sean.garibay@sourcefit.net
-jiraToken=
-api_key=
-assistant_id=
+search_url=https://{your org domain}.net/rest/api/2/search
+browse_url=https://{your org domain}.net/browse/
+jiraUser=your_jira_account_email
+jiraToken=your_jira_REST_API_Key
+api_key=your_openAI_API_key
+assistant_id=your_openAI_Assistant_ID
