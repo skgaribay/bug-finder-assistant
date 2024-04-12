@@ -4,3 +4,4 @@ jiraUser=your_jira_account_email
 jiraToken=your_jira_REST_API_Key
 api_key=your_openAI_API_key
 assistant_id=your_openAI_Assistant_ID
+org_id=your_openAI_org_ID

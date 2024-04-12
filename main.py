@@ -8,7 +8,11 @@ load_dotenv()
 
 api_key = os.getenv('api_key')
 asst_id = os.getenv('assistant_id')
-client = OpenAI(api_key=api_key)
+org_id = os.getenv('org_id')
+client = OpenAI(
+    api_key=api_key,
+    organization=org_id,
+    )
 
 thread = client.beta.threads.create()
 
@@ -258,6 +262,7 @@ def ask_assistant(query):
         role="user",
         content=query
     )
+    #print(message)
     
     run = client.beta.threads.runs.create_and_poll(
         thread_id=thread.id,
@@ -270,6 +275,7 @@ def ask_assistant(query):
             thread_id=thread.id
         )
         msg_data = msg_response.data
+        #print(msg_response)
         latest = msg_data[0].content[0].text.value
         keys = get_keys(latest)
         if keys:
