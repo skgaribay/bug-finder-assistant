@@ -105,6 +105,7 @@ def check_issues():
                 break
             case _:
                 continue
+    print()
     
 def update_datafile():
     offset = 0
@@ -124,7 +125,7 @@ def update_datafile():
             break
         
         extract_fields(response_data, extracted_data)
-    print("]done.")
+    print("]done.\n")
 
     #upload to openAI
 
@@ -146,7 +147,7 @@ def update_asst_file(fpath):
         file_ids=[fid],
     )
     
-    print("done")
+    print("done\n")
     
     write_last_update()
         
@@ -284,6 +285,8 @@ def ask_assistant(query):
             print("[ASSISTANT] ", wlinks)
         else:
             print("[ASSISTANT] ", latest)
+            
+        print()
             
     else:
         print(run.status)
